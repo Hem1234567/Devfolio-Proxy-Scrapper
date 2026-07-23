@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PEC Hacks — Control Room</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+  :root{
+    --bg: #0a0d12;
+    --panel: #10141b;
+    --panel-2: #141922;
+    --line: #232a35;
+    --text: #e7ecf2;
+    --muted: #6b7686;
+    --cyan: #4fd1c5;
+    --amber: #f5a623;
+    --coral: #ff6b6b;
+    --violet: #9d8cff;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Inter', sans-serif;
+  }
+  *{
+    box-sizing:border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--sans);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(79,209,197,0.06), transparent 40%),
+      radial-gradient(circle at 85% 10%, rgba(157,140,255,0.05), transparent 45%);
+  }
+
+  /* ---------- scrollbars ---------- */
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; border: 3px solid var(--bg); }
+  .panel ::-webkit-scrollbar-thumb { border-color: var(--panel); }
+  .modal ::-webkit-scrollbar-thumb { border-color: var(--panel); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 28px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:rgba(10,13,18,0.92); backdrop-filter:blur(8px);
+    z-index:20;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand .mark{
+    width:10px; height:10px; border-radius:50%; background:var(--cyan);
+    box-shadow:0 0 0 4px rgba(79,209,197,0.15);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{ box-shadow:0 0 0 4px rgba(79,209,197,0.15); }
+    50%{ box-shadow:0 0 0 8px rgba(79,209,197,0.06); }
+  }
+  .brand h1{font-size:15px; font-weight:700; letter-spacing:0.02em; margin:0;}
+  .brand .sub{font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px;}
+  .status{display:flex; align-items:center; gap:18px; font-family:var(--mono); font-size:11px; color:var(--muted);}
+  .status button{
+    font-family:var(--mono); font-size:11px; color:var(--bg); background:var(--cyan);
+    border:none; border-radius:5px; padding:7px 12px; cursor:pointer; font-weight:600;
+    letter-spacing:0.02em;
+  }
+  .status button:hover{ filter:brightness(1.08); }
+  .status button:disabled{opacity:0.5; cursor:progress;}
+
+  main{ max-width:1280px; margin:0 auto; padding:28px; }
+
+  .hk-title{ margin-bottom:26px; }
+  .hk-title .eyebrow{ font-family:var(--mono); font-size:11px; color:var(--cyan); letter-spacing:0.08em; text-transform:uppercase; }
+  .hk-title h2{ font-size:28px; margin:6px 0 4px; font-weight:800; }
+  .hk-title p{ color:var(--muted); font-size:13px; margin:0; font-family:var(--mono); }
+
+  /* ---------- stat grid ---------- */
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr));
+    gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px;
+    overflow:hidden; margin-bottom:22px;
+  }
+  .stat{ background:var(--panel); padding:16px 18px; }
+  .stat .label{ font-family:var(--mono); font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
+  .stat .value{ font-family:var(--mono); font-size:26px; font-weight:600; margin-top:6px; font-variant-numeric:tabular-nums; }
+  .stat.accent-cyan .value{ color:var(--cyan); }
+  .stat.accent-amber .value{ color:var(--amber); }
+  .stat.accent-coral .value{ color:var(--coral); }
+  .stat.accent-violet .value{ color:var(--violet); }
+
+  /* ---------- layout grid ---------- */
+  .grid-2col{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
+  @media (max-width:900px){ .grid-2col{ grid-template-columns:1fr; } }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden;
+  }
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 18px; border-bottom:1px solid var(--line);
+  }
+  .panel-head h3{ font-size:13px; margin:0; font-weight:700; letter-spacing:0.01em; }
+  .panel-head .count{ font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .panel-body{ padding:0; }
+  .panel-pad{ padding:16px 18px; }
+
+  input.search{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:8px 10px; border-radius:6px; font-family:var(--mono); font-size:12px; outline:none;
+  }
+  input.search:focus{ border-color:var(--cyan); }
+
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th{
+    text-align:left; font-family:var(--mono); font-size:10.5px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:0.05em; padding:10px 18px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--panel);
+  }
+  tbody td{ padding:9px 18px; border-bottom:1px solid rgba(35,42,53,0.6); }
+  tbody tr:hover{ background:var(--panel-2); }
+  .table-scroll{ max-height:460px; overflow:auto; }
+  .row-sub{ font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:2px; }
+
+  .badge{
+    display:inline-block; padding:2px 8px; border-radius:100px; font-family:var(--mono);
+    font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; border:1px solid transparent;
+  }
+  .badge.accept, .badge.accept_sent, .badge.check_in{ color:var(--cyan); border-color:rgba(79,209,197,0.35); background:rgba(79,209,197,0.08); }
+  .badge.waitlist, .badge.waitlist_sent{ color:var(--amber); border-color:rgba(245,166,35,0.35); background:rgba(245,166,35,0.08); }
+  .badge.reject, .badge.reject_sent, .badge.withdraw{ color:var(--coral); border-color:rgba(255,107,107,0.35); background:rgba(255,107,107,0.08); }
+  .badge.submit, .badge.rsvp{ color:var(--violet); border-color:rgba(157,140,255,0.35); background:rgba(157,140,255,0.08); }
+  .badge.other{ color:var(--muted); border-color:var(--line); background:var(--panel-2); }
+
+  .bar-row{ display:flex; align-items:center; gap:10px; padding:8px 18px; }
+  .bar-row .name{ width:38%; font-size:12px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-row .track{ flex:1; height:6px; background:var(--panel-2); border-radius:3px; overflow:hidden; }
+  .bar-row .fill{ height:100%; background:linear-gradient(90deg, var(--cyan), var(--violet)); border-radius:3px; }
+  .bar-row .num{ font-family:var(--mono); font-size:11.5px; color:var(--muted); width:34px; text-align:right; }
+  #collegeList, #cityList, #countryList{ max-height:480px; overflow-y:auto; }
+
+  .empty, .loading, .err{ padding:32px 18px; text-align:center; color:var(--muted); font-family:var(--mono); font-size:12px; }
+  .err{ color:var(--coral); }
+  .loading .dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--cyan); margin:0 2px; animation:blink 1.2s infinite; }
+  .loading .dot:nth-child(2){ animation-delay:0.2s; } .loading .dot:nth-child(3){ animation-delay:0.4s; }
+  @keyframes blink{ 0%,80%,100%{opacity:0.2;} 40%{opacity:1;} }
+
+  footer{ text-align:center; padding:24px; color:var(--muted); font-family:var(--mono); font-size:11px; }
+  .tag-endpoint{ font-family:var(--mono); font-size:10px; color:var(--muted); }
+  a.raw-link{ color:var(--muted); font-family:var(--mono); font-size:10.5px; text-decoration:none; border-bottom:1px dotted var(--muted); }
+  a.raw-link:hover{ color:var(--cyan); border-color:var(--cyan); }
+
+  /* ---------- team link + resume link (in table) ---------- */
+  .team-link{
+    color:var(--violet); background:rgba(157,140,255,0.08); border:1px solid rgba(157,140,255,0.3);
+    font-family:var(--mono); font-size:11.5px; padding:3px 9px; border-radius:100px; cursor:pointer;
+  }
+  .team-link:hover{ background:rgba(157,140,255,0.18); }
+  .team-link.none{ color:var(--muted); background:transparent; border-color:var(--line); cursor:default; }
+  .resume-link{
+    color:var(--cyan); font-family:var(--mono); font-size:11.5px; text-decoration:none;
+    border-bottom:1px dotted var(--cyan);
+  }
+  .resume-link:hover{ opacity:0.8; }
+  .resume-link.none{ color:var(--muted); border-color:var(--line); }
+
+  /* ---------- team modal ---------- */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(6,8,11,0.72); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; z-index:100; padding:24px;
+  }
+  .modal-backdrop.open{ display:flex; }
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    width:100%; max-width:640px; max-height:82vh; display:flex; flex-direction:column;
+    box-shadow:0 24px 60px rgba(0,0,0,0.5);
+  }
+  .modal-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px; border-bottom:1px solid var(--line);
+  }
+  .modal-head h3{ margin:0; font-size:14px; font-weight:700; }
+  .modal-head .uuid{ font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:3px; }
+  .modal-close{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+    width:28px; height:28px; border-radius:7px; cursor:pointer; font-size:14px; line-height:1;
+  }
+  .modal-close:hover{ color:var(--text); border-color:var(--cyan); }
+  .modal-body{ padding:8px 0; overflow-y:auto; }
+  .member-card{
+    padding:12px 20px; border-bottom:1px solid rgba(35,42,53,0.6); display:flex; flex-direction:column; gap:4px;
+  }
+  .member-card:last-child{ border-bottom:none; }
+  .member-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .member-name{ font-weight:600; font-size:13px; }
+  .member-meta{ font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .member-bio{ font-size:12px; color:var(--muted); margin-top:2px; }
+
+  /* ---------- auth connect bar ---------- */
+  .auth-bar{
+    background:linear-gradient(180deg, rgba(245,166,35,0.08), transparent);
+    border:1px solid rgba(245,166,35,0.35); border-radius:10px;
+    padding:14px 18px; margin-bottom:22px; display:flex; flex-direction:column; gap:10px;
+  }
+  .auth-bar.connected{
+    background:linear-gradient(180deg, rgba(79,209,197,0.08), transparent);
+    border-color:rgba(79,209,197,0.35);
+  }
+  .auth-bar .auth-head{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; }
+  .auth-bar .auth-head .dot{ width:8px; height:8px; border-radius:50%; background:var(--amber); }
+  .auth-bar.connected .auth-head .dot{ background:var(--cyan); }
+  .auth-bar .auth-steps{ font-size:12px; color:var(--muted); line-height:1.6; }
+  .auth-bar .auth-steps code{ background:var(--panel-2); padding:1px 5px; border-radius:4px; font-family:var(--mono); font-size:11px; color:var(--text); }
+  .auth-row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .auth-row select, .auth-row input{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:8px 10px; border-radius:6px; font-family:var(--mono); font-size:12px; outline:none;
+  }
+  .auth-row select:focus, .auth-row input:focus{ border-color:var(--cyan); }
+  .auth-row input.token-input{ flex:1; min-width:220px; }
+  .auth-row button{
+    font-family:var(--mono); font-size:12px; font-weight:600; border:none; border-radius:6px;
+    padding:8px 14px; cursor:pointer;
+  }
+  .auth-row .btn-save{ background:var(--cyan); color:var(--bg); }
+  .auth-row .btn-clear{ background:var(--panel-2); color:var(--muted); border:1px solid var(--line); }
+  .auth-row .btn-clear:hover{ color:var(--coral); border-color:var(--coral); }
+  .auth-toggle{ background:none; border:none; color:var(--cyan); font-family:var(--mono); font-size:11px; cursor:pointer; text-decoration:underline; padding:0; align-self:flex-start; }
+  .btn-action{
+    background:var(--cyan); color:#0b0f17; border:none; padding:8px 14px;
+    border-radius:6px; font-family:var(--mono); font-size:11px; font-weight:700;
+    cursor:pointer; text-transform:uppercase; letter-spacing:0.04em;
+  }
+  .btn-action:hover{ filter:brightness(1.1); }
+  .btn-action:disabled{ opacity:0.5; cursor:progress; }
+  table td, table th{ white-space:nowrap; }
+</style>
+
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark"></div>
+    <div>
+      <h1>PEC HACKS — CONTROL ROOM</h1>
+      <div class="sub">devfolio.co/pec-hacks · live participant ops</div>
+    </div>
+  </div>
+  <div class="status">
+    <span id="lastFetched">not fetched yet</span>
+    <button id="refreshBtn" onclick="loadAll()">↻ Refresh all</button>
+  </div>
+</div>
+
+<main>
+
+  <div class="auth-bar" id="authBar">
+    <div class="auth-head"><span class="dot"></span><span id="authHeadText">Not connected — requests will 403</span></div>
+    <div class="auth-steps">
+      This is organizer-only data protected by a session <code>cookie</code>. Browsers won't let a webpage attach a
+      cookie header to its own requests, so the fix is a tiny local proxy that runs on your machine, attaches your
+      cookie server-side, and hands data back to this page over <code>localhost</code>.
+    </div>
+    <div class="auth-steps" id="proxySteps">
+      1. Download <b>proxy.py</b> (linked below the dashboard). Open it in any text editor.<br>
+      2. In DevTools → Network → click an <code>api.devfolio.co</code> request → Headers → Request Headers → copy the full <code>cookie</code> value.<br>
+      3. Paste it as the <code>COOKIE</code> value near the top of proxy.py, save the file.<br>
+      4. Run <code>python3 proxy.py</code> in a terminal and leave that window open.<br>
+      5. Come back here and hit Connect below.
+    </div>
+    <div class="auth-row">
+      <input class="token-input" id="proxyUrlInput" value="http://localhost:8787" placeholder="proxy URL" autocomplete="off">
+      <button class="btn-save" onclick="saveProxyConfig()">Connect &amp; reload data</button>
+      <button class="btn-clear" onclick="clearAuthToken()">Clear</button>
+      <button class="auth-toggle" onclick="toggleHeaderMode()" id="headerModeToggle">Use a header token instead →</button>
+    </div>
+
+    <div id="headerModeBlock" style="display:none; flex-direction:column; gap:10px;">
+      <div class="auth-steps">
+        Only use this if your auth actually turns out to be a bearer token rather than a cookie (rare for this API,
+        but here in case): paste the header value below and it'll be attached directly, no proxy needed.
+      </div>
+      <div class="auth-row">
+        <select id="authHeaderName">
+          <option value="Authorization">Authorization header</option>
+        </select>
+        <input class="token-input" id="authTokenInput" placeholder="Bearer eyJhbGciOi..." autocomplete="off">
+        <button class="btn-save" onclick="saveAuthToken()">Save &amp; reload data</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="hk-title">
+    <div class="eyebrow">Hackathon overview</div>
+    <h2 id="hkName">Loading hackathon details…</h2>
+    <p id="hkMeta">—</p>
+  </div>
+
+  <div class="stats" id="statsGrid">
+    <div class="stat"><div class="label">Total applications</div><div class="value">—</div></div>
+    <div class="stat"><div class="label">Submitted for review</div><div class="value">—</div></div>
+    <div class="stat"><div class="label">RSVP'd</div><div class="value">—</div></div>
+    <div class="stat"><div class="label">Projects</div><div class="value">—</div></div>
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:18px;">
+    <div class="panel">
+      <div class="panel-head">
+        <h3>Participants</h3>
+        <span class="count" id="participantsCount">—</span>
+      </div>
+      <div class="panel-pad" style="padding-bottom:10px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <input class="search" id="pSearch" placeholder="filter by name, team, city, college, domain…" oninput="renderParticipants()" style="flex:1; min-width:200px;">
+        <button class="btn-action" id="fetchTeamsBtn" onclick="fetchAllTeamDetails()">⚡ Fetch Full Details (PPT, Domain, Emails)</button>
+        <button class="btn-action" onclick="exportParticipantsCSV()" style="background:var(--violet); color:#fff;">⬇ Export CSV</button>
+        <span id="fetchTeamsStatus" style="font-family:var(--mono); font-size:11px; color:var(--muted);"></span>
+      </div>
+      <div class="panel-body">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Team Name</th>
+                <th>City</th>
+                <th>All Girls</th>
+                <th>Team Strength</th>
+                <th>Domain</th>
+                <th>College Name</th>
+                <th>College State</th>
+                <th>Phone Leader</th>
+                <th>Email Leader</th>
+                <th>Email M1</th>
+                <th>Email M2</th>
+                <th>Email M3</th>
+                <th>Email M4</th>
+                <th>PPT</th>
+                <th>Participant</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="pTableBody">
+              <tr><td colspan="16"><div class="loading">fetching<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2col">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Colleges</h3>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn-action" onclick="exportCollegesCSV()" style="padding:4px 8px; font-size:10px; background:var(--violet); color:#fff;">⬇ CSV</button>
+            <span class="count" id="collegeCount">—</span>
+          </div>
+        </div>
+        <div class="panel-body" id="collegeList"><div class="loading">fetching<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Cities</h3>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn-action" onclick="exportCitiesCSV()" style="padding:4px 8px; font-size:10px; background:var(--violet); color:#fff;">⬇ CSV</button>
+            <span class="count" id="cityCount">—</span>
+          </div>
+        </div>
+        <div class="panel-body" id="cityList"><div class="loading">fetching<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3>Countries</h3>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn-action" onclick="exportCountriesCSV()" style="padding:4px 8px; font-size:10px; background:var(--violet); color:#fff;">⬇ CSV</button>
+          <span class="count" id="countryCount">—</span>
+        </div>
+      </div>
+      <div class="panel-body" id="countryList"><div class="loading">fetching<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  organizer data requires the local proxy (proxy.py, shared alongside this file) — see the connect bar above ·
+  <span class="tag-endpoint">everything else runs entirely in your browser, nothing is stored on any server</span>
+</footer>
+
+<div class="modal-backdrop" id="teamModalBackdrop" onclick="if(event.target===this) closeTeamModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalTeamName">Team</h3>
+        <div class="uuid" id="modalTeamUuid">—</div>
+      </div>
+      <button class="modal-close" onclick="closeTeamModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalTeamBody">
+      <div class="loading">fetching<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const HK = 'pec-hacks';
+const BASE = 'https://api.devfolio.co/api/hackathons/' + HK;
+const STATUS_LIST = 'accept_sent,accept,check_in,reimburse,reject_sent,reject,rsvp,submit,waitlist_sent,waitlist,withdraw';
+const USER_Q = encodeURIComponent(btoa('{"status":"active"}'));
+
+let allParticipants = [];
+const teamMembersCache = new Map();
+
+function setLastFetched(){
+  const t = new Date();
+  document.getElementById('lastFetched').textContent = 'last synced ' + t.toLocaleTimeString();
+}
+
+function escapeHtml(s){
+  if(s===undefined || s===null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- Auth handling: 'proxy' mode (cookie-based, via local proxy.py) or 'header' mode (bearer token) ----------
+const AUTH_STORE_KEY = 'devfolio_dashboard_auth';
+
+function getAuth(){
+  try{
+    const raw = localStorage.getItem(AUTH_STORE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+
+function toggleHeaderMode(){
+  const block = document.getElementById('headerModeBlock');
+  const showing = block.style.display === 'flex';
+  block.style.display = showing ? 'none' : 'flex';
+  document.getElementById('headerModeToggle').textContent = showing ? 'Use a header token instead →' : '← Back to proxy mode';
+}
+
+function setAuthUI(){
+  const bar = document.getElementById('authBar');
+  const headText = document.getElementById('authHeadText');
+  const auth = getAuth();
+  if(auth && auth.mode === 'proxy' && auth.proxyBase){
+    bar.classList.add('connected');
+    headText.textContent = `Connected — routing requests through ${auth.proxyBase}`;
+    document.getElementById('proxyUrlInput').value = auth.proxyBase;
+  } else if(auth && auth.mode === 'header' && auth.value){
+    bar.classList.add('connected');
+    headText.textContent = `Connected — sending "${auth.header}" header on every request`;
+    document.getElementById('authTokenInput').value = auth.value;
+  } else {
+    bar.classList.remove('connected');
+    headText.textContent = 'Not connected — requests will 403';
+  }
+}
+
+function saveProxyConfig(){
+  const proxyBase = document.getElementById('proxyUrlInput').value.trim().replace(/\/+$/, '');
+  if(!proxyBase){ alert('Enter the proxy URL (default http://localhost:8787).'); return; }
+  localStorage.setItem(AUTH_STORE_KEY, JSON.stringify({ mode: 'proxy', proxyBase }));
+  setAuthUI();
+  loadAll();
+}
+
+function saveAuthToken(){
+  const header = document.getElementById('authHeaderName').value;
+  const value = document.getElementById('authTokenInput').value.trim();
+  if(!value){ alert('Paste the copied header value first.'); return; }
+  localStorage.setItem(AUTH_STORE_KEY, JSON.stringify({ mode: 'header', header, value }));
+  setAuthUI();
+  loadAll();
+}
+
+function clearAuthToken(){
+  localStorage.removeItem(AUTH_STORE_KEY);
+  document.getElementById('authTokenInput').value = '';
+  setAuthUI();
+}
+
+const API_ORIGIN = 'https://api.devfolio.co';
+
+async function fetchJSON(url){
+  const auth = getAuth();
+  const headers = { 'Accept': 'application/json' };
+  let fetchUrl = url;
+  let opts = { headers };
+
+  if(auth && auth.mode === 'proxy' && auth.proxyBase){
+    // rewrite https://api.devfolio.co/... -> http://localhost:8787/...
+    fetchUrl = url.replace(API_ORIGIN, auth.proxyBase);
+  } else if(auth && auth.mode === 'header' && auth.value){
+    headers[auth.header] = auth.value;
+    opts.credentials = 'include';
+  }
+
+  const res = await fetch(fetchUrl, opts);
+  if(!res.ok){
+    if(res.status === 403){
+      throw new Error('HTTP 403 — not authorized as organizer (check the connect bar above — proxy running? cookie pasted into proxy.py?)');
+    }
+    throw new Error('HTTP ' + res.status);
+  }
+  return res.json();
+}
+
+// ---------- Hackathon info ----------
+async function loadHackathonInfo(){
+  try{
+    const data = await fetchJSON(BASE);
+    const hk = data.hackathon || data.data || data;
+    document.getElementById('hkName').textContent = hk.name || hk.slug || HK;
+    const bits = [];
+    if(hk.starts_at) bits.push('starts ' + new Date(hk.starts_at).toLocaleDateString());
+    if(hk.ends_at) bits.push('ends ' + new Date(hk.ends_at).toLocaleDateString());
+    if(hk.location) bits.push(hk.location);
+    document.getElementById('hkMeta').textContent = bits.length ? bits.join(' · ') : 'details loaded';
+  }catch(e){
+    document.getElementById('hkName').textContent = 'PEC Hacks';
+    document.getElementById('hkMeta').textContent = 'couldn\'t load hackathon meta (' + e.message + ')';
+  }
+}
+
+// ---------- Analytics ----------
+function statCard(label, value, accent){
+  const div = document.createElement('div');
+  div.className = 'stat' + (accent ? ' accent-' + accent : '');
+  div.innerHTML = '<div class="label">' + escapeHtml(label) + '</div><div class="value">' + escapeHtml(value) + '</div>';
+  return div;
+}
+
+async function loadAnalytics(){
+  const grid = document.getElementById('statsGrid');
+  try{
+    const url = BASE + '/analytics?role=hacker&fields=total_applications,review_stats,submitted_for_review,rsvp_stats,project_stats';
+    const data = await fetchJSON(url);
+    const a = data.analytics || data.data || data;
+
+    grid.innerHTML = '';
+    grid.appendChild(statCard('Total applications', a.total_applications ?? '—', 'cyan'));
+
+    const submitted = (typeof a.submitted_for_review === 'object') ? (a.submitted_for_review.count ?? a.submitted_for_review.total ?? JSON.stringify(a.submitted_for_review)) : a.submitted_for_review;
+    grid.appendChild(statCard('Submitted for review', submitted ?? '—', 'violet'));
+
+    const rsvp = a.rsvp_stats && typeof a.rsvp_stats === 'object' ? (a.rsvp_stats.yes ?? a.rsvp_stats.count ?? a.rsvp_stats.total) : a.rsvp_stats;
+    grid.appendChild(statCard('RSVP\'d', rsvp ?? '—', 'amber'));
+
+    const projects = a.project_stats && typeof a.project_stats === 'object' ? (a.project_stats.count ?? a.project_stats.total) : a.project_stats;
+    grid.appendChild(statCard('Projects submitted', projects ?? '—', 'coral'));
+
+    if(a.review_stats && typeof a.review_stats === 'object'){
+      Object.entries(a.review_stats).forEach(([k,v])=>{
+        if(typeof v === 'number' || typeof v === 'string'){
+          grid.appendChild(statCard(k.replace(/_/g,' '), v));
+        }
+      });
+    }
+  }catch(e){
+    grid.innerHTML = '<div class="err" style="grid-column:1/-1;">analytics fetch failed — ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+// ---------- Participants (paginated) ----------
+async function loadParticipants(){
+  const tbody = document.getElementById('pTableBody');
+  try{
+    let page = 1;
+    let all = [];
+    let totalPages = 1;
+    const limit = 200;
+    while(page <= totalPages && page <= 100){
+      const url = `${BASE}/participants?limit=${limit}&order=DESC&page=${page}&status=${encodeURIComponent(STATUS_LIST)}&user=${USER_Q}&role=hacker`
+        + `&hackathon_scope_extra_attributes=uuid%252Cname%252Crequired%252Cdesc%252Ctype`
+        + `&profile_attributes=name%252Ccity%252Cstate`
+        + `&address_attributes=city%252Cstate%252Ccountry`
+        + `&user_attributes=first_name%252Clast_name%252Cusername%252Cdob%252Cemail%252Cuuid%252Cbio%252Cshort_bio%252Cstatus%252Cphone_number%252Ccollege%252Caddress%252Ccity%252Cstate`
+        + `&user_extra_attributes=resume%252Cphone_number%252Cmobile%252Ccollege%252Ceducation%252Caddress%252Ccity%252Cstate`
+        + `&user_hackathon_extra_attributes=uuid%252Cvalue`;
+      const data = await fetchJSON(url);
+      // real shape: { result: [...], count, pages, ai_score_average, ai_score_distribution }
+      const list = data.result || data.participants || data.data || (Array.isArray(data) ? data : []);
+      totalPages = data.pages || 1;
+      if(!list.length) break;
+      all = all.concat(list);
+      page++;
+    }
+    allParticipants = all;
+    document.getElementById('participantsCount').textContent = all.length + ' loaded';
+    renderParticipants();
+  }catch(e){
+    tbody.innerHTML = `<tr><td colspan="5"><div class="err">participants fetch failed — ${escapeHtml(e.message)}</div></td></tr>`;
+    document.getElementById('participantsCount').textContent = 'error';
+  }
+}
+
+function participantName(p){
+  const u = p.user || {};
+  const full = [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(' ');
+  return full || u.username || u.email || 'Unnamed';
+}
+function participantEmail(p){
+  return (p.user && p.user.email) || '';
+}
+function participantCollege(p){
+  // this endpoint doesn't return college directly (see participantsCollege panel instead) —
+  // kept as a fallback in case a future response shape includes it.
+  return p.college || p.college_name || (p.user && p.user.college) || (p.education && p.education.college) || '—';
+}
+function participantStatus(p){
+  return p.status || p.application_status || p.state || 'unknown';
+}
+function participantTeamUuid(p){
+  return (p.team && p.team.uuid) || p.team_uuid || null;
+}
+function participantTeamName(p){
+  return (p.team && p.team.name) || p.team_name || null;
+}
+
+// Turns "hackathons/xxxxx/resume.pdf" (or a full URL) into a clickable S3 link.
+// Rule: prefix with https://devfolio-prod.s3.ap-south-1.amazonaws.com/ then the
+// path starting at "hackathons" and ending at ".pdf".
+const S3_BASE = 'https://devfolio-prod.s3.ap-south-1.amazonaws.com';
+function resumeUrl(p){
+  let raw = p.resume || (p.user && p.user.resume) || p.resume_url ||
+            (p.extra && p.extra.resume) || (p.user_extra && p.user_extra.resume) ||
+            (p.user && p.user.user_extra && p.user.user_extra.resume);
+  if(!raw || typeof raw !== 'string') return null;
+  if(/^https?:\/\//i.test(raw)) return raw;
+  const match = raw.match(/hackathons.*\.pdf/i);
+  const path = match ? match[0] : raw;
+  return `${S3_BASE}/${path.replace(/^\/+/, '')}`;
+}
+
+function extractPhoneNumber(obj){
+  if(!obj) return null;
+  const candidates = [
+    obj.phone_number,
+    obj.mobile,
+    obj.contact_number,
+    obj.whatsapp_number,
+    obj.user && obj.user.phone_number,
+    obj.user && obj.user.mobile,
+    obj.user_extra && obj.user_extra.phone_number,
+    obj.user_extra && obj.user_extra.mobile
+  ];
+  for(const c of candidates){
+    if(c && /\d{5,}/.test(String(c))) return String(c).trim();
+  }
+  return null;
+}
+
+function formatAllGirls(val){
+  if(val === undefined || val === null || val === '—' || val === '') return '—';
+  const s = String(val).trim().toLowerCase();
+  if(s === '1' || s === 'yes' || s === 'true' || s === 'yep' || s === 'yep !' || s.startsWith('y')) {
+    return 'yep !';
+  }
+  if(s === '2' || s === '0' || s === 'no' || s === 'false' || s === 'neh' || s === 'neh !' || s === 'nah' || s.startsWith('n')) {
+    return 'neh !';
+  }
+  return s;
+}
+
+function extractCity(obj){
+  if(!obj) return null;
+  if(typeof obj === 'string') return obj;
+  return obj.city || obj.city_name || (obj.address && (obj.address.city || obj.address.city_name)) || obj.location || null;
+}
+
+function extractState(obj){
+  if(!obj) return null;
+  if(typeof obj === 'string') return obj;
+  return obj.state || obj.country || (obj.address && (obj.address.state || obj.address.country)) || null;
+}
+
+function extractCollege(obj){
+  if(!obj) return null;
+  if(typeof obj === 'string') return obj;
+  return obj.college || obj.college_name || obj.institution ||
+         (obj.education && (obj.education.college || obj.education.institution || obj.education.name)) || null;
+}
+
+function getParticipantFullRowData(p){
+  const teamUuid = participantTeamUuid(p);
+  const teamName = participantTeamName(p) || p.team_name || (p.team && p.team.name) || participantName(p) || '—';
+  const members = teamUuid && teamMembersCache.has(teamUuid) ? teamMembersCache.get(teamUuid) : null;
+
+  let city = extractCity(p) || extractCity(p.user) || extractCity(p.user_extra) || '—';
+  let state = extractState(p) || extractState(p.user) || extractState(p.user_extra) || '—';
+  let collegeName = extractCollege(p) || extractCollege(p.user) || extractCollege(p.user_extra) || participantCollege(p) || '—';
+  let phoneLeader = extractPhoneNumber(p) || extractPhoneNumber(p.user) || extractPhoneNumber(p.user_extra) || '—';
+  let emailLeader = participantEmail(p) || (p.user && p.user.email) || '—';
+  let allGirls = p.all_girls || (p.team && p.team.all_girls) || '—';
+  let teamStrength = members ? members.length : (p.team && p.team.users ? p.team.users.length : (teamUuid ? '1+' : '1'));
+  let domain = p.domain || p.track || p.theme || (p.team && (p.team.domain || p.team.track)) || '—';
+  let ppt = p.ppt || p.presentation || (p.team && p.team.presentation) || '—';
+
+  const inspectExtras = (extras, isLeader) => {
+    if(!Array.isArray(extras)) return;
+    extras.forEach(ext => {
+      const name = ((ext.hackathon_scope_extra && ext.hackathon_scope_extra.name) || ext.name || '').toLowerCase();
+      const val = ext.value || '';
+      if(!val) return;
+      if(allGirls === '—' && (name.includes('all girls') || name.includes('girls team') || name.includes('all-girls') || name.includes('women'))) {
+        allGirls = val;
+      }
+      if(domain === '—' && (name.includes('domain') || name.includes('track') || name.includes('theme') || name.includes('problem statement') || name.includes('category'))) {
+        domain = val;
+      }
+      if(collegeName === '—' && (name.includes('college') || name.includes('university') || name.includes('institute') || name.includes('institution'))) {
+        collegeName = val;
+      }
+      if(city === '—' && (name.includes('city') || name.includes('location'))) {
+        city = val;
+      }
+      if(state === '—' && (name.includes('state') || name.includes('country'))) {
+        state = val;
+      }
+      if((phoneLeader === '—' || isLeader) && (name.includes('phone') || name.includes('mobile') || name.includes('whatsapp') || name.includes('contact')) && /\d{5,}/.test(val)) {
+        phoneLeader = val;
+      }
+      if(ppt === '—' && (name.includes('presentation') || name.includes('ppt') || name.includes('deck') || name.includes('idea'))) {
+        ppt = val.startsWith('http') ? val : `${S3_BASE}/${val.replace(/^\/+/, '')}`;
+      }
+    });
+  };
+
+  inspectExtras(p.user_hackathon_extras, true);
+  if(p.user && p.user.user_hackathon_extras) inspectExtras(p.user.user_hackathon_extras, true);
+
+  let emails = [emailLeader, '—', '—', '—', '—'];
+  if(members && Array.isArray(members)){
+    const memberEmails = members.map(m => m.email || (m.user && m.user.email) || '—');
+    emails = [
+      memberEmails[0] || emailLeader || '—',
+      memberEmails[1] || '—',
+      memberEmails[2] || '—',
+      memberEmails[3] || '—',
+      memberEmails[4] || '—'
+    ];
+    emailLeader = emails[0];
+
+    const leaderPhone = extractPhoneNumber(members[0]) || extractPhoneNumber(members[0].user) || extractPhoneNumber(members[0].user_extra);
+    if(leaderPhone) phoneLeader = leaderPhone;
+
+    members.forEach((m, idx) => {
+      const isLeader = (idx === 0);
+      inspectExtras(m.user_hackathon_extras, isLeader);
+      if(m.user && m.user.user_hackathon_extras) inspectExtras(m.user.user_hackathon_extras, isLeader);
+
+      if(collegeName === '—') collegeName = extractCollege(m) || extractCollege(m.user) || extractCollege(m.user_extra) || '—';
+      if(city === '—') city = extractCity(m) || extractCity(m.user) || extractCity(m.user_extra) || '—';
+      if(state === '—') state = extractState(m) || extractState(m.user) || extractState(m.user_extra) || '—';
+      if(phoneLeader === '—') phoneLeader = extractPhoneNumber(m) || extractPhoneNumber(m.user) || extractPhoneNumber(m.user_extra) || '—';
+    });
+  }
+
+  return {
+    teamName,
+    city,
+    allGirls: formatAllGirls(allGirls),
+    teamStrength,
+    domain,
+    collegeName,
+    collegeState: state,
+    phoneLeader,
+    emailLeader,
+    emailM1: emails[1] || '—',
+    emailM2: emails[2] || '—',
+    emailM3: emails[3] || '—',
+    emailM4: emails[4] || '—',
+    ppt,
+    teamUuid
+  };
+}
+
+function renderParticipants(){
+  const tbody = document.getElementById('pTableBody');
+  const q = document.getElementById('pSearch').value.trim().toLowerCase();
+  let rows = allParticipants;
+  if(q){
+    rows = rows.filter(p => {
+      const hay = (participantName(p) + ' ' + participantEmail(p) + ' ' + participantCollege(p) + ' ' +
+                   participantStatus(p) + ' ' + (participantTeamName(p) || '')).toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="16"><div class="empty">no participants match</div></td></tr>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  rows.forEach((p, idx) => {
+    const d = getParticipantFullRowData(p);
+    const tr = document.createElement('tr');
+    const status = participantStatus(p);
+    const cls = ['accept_sent','accept','check_in','reject_sent','reject','rsvp','submit','waitlist_sent','waitlist','withdraw'].includes(status) ? status : 'other';
+
+    tr.innerHTML = `
+      <td>${d.teamUuid
+          ? `<span class="team-link" data-uuid="${escapeHtml(d.teamUuid)}" data-name="${escapeHtml(d.teamName)}">${escapeHtml(d.teamName)}</span>`
+          : escapeHtml(d.teamName)}</td>
+      <td>${escapeHtml(d.city)}</td>
+      <td>${escapeHtml(d.allGirls)}</td>
+      <td>${escapeHtml(d.teamStrength)}</td>
+      <td>${escapeHtml(d.domain)}</td>
+      <td>${escapeHtml(d.collegeName)}</td>
+      <td>${escapeHtml(d.collegeState)}</td>
+      <td>${escapeHtml(d.phoneLeader)}</td>
+      <td>${escapeHtml(d.emailLeader)}</td>
+      <td>${escapeHtml(d.emailM1)}</td>
+      <td>${escapeHtml(d.emailM2)}</td>
+      <td>${escapeHtml(d.emailM3)}</td>
+      <td>${escapeHtml(d.emailM4)}</td>
+      <td>${d.ppt && d.ppt !== '—'
+          ? `<a class="resume-link" href="${escapeHtml(d.ppt)}" target="_blank" rel="noopener">View PPT</a>`
+          : '—'}</td>
+      <td>
+        <div>${escapeHtml(participantName(p))}</div>
+        ${d.emailLeader && d.emailLeader !== '—' ? `<div class="row-sub">${escapeHtml(d.emailLeader)}</div>` : ''}
+      </td>
+      <td><span class="badge ${cls}">${escapeHtml(status)}</span></td>
+    `;
+    frag.appendChild(tr);
+  });
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+
+  tbody.querySelectorAll('.team-link[data-uuid]').forEach(el => {
+    el.addEventListener('click', () => openTeamModal(el.dataset.uuid, el.dataset.name));
+  });
+}
+
+async function fetchAllTeamDetails(){
+  const btn = document.getElementById('fetchTeamsBtn');
+  const statusEl = document.getElementById('fetchTeamsStatus');
+  const uuids = [...new Set(allParticipants.map(p => participantTeamUuid(p)).filter(Boolean))];
+  if(btn) btn.disabled = true;
+  let done = 0;
+  for(const uuid of uuids){
+    if(!teamMembersCache.has(uuid)){
+      if(statusEl) statusEl.textContent = `Fetching team details (${done}/${uuids.length})…`;
+      try{
+        const data = await fetchJSON(teamMembersUrl(uuid));
+        teamMembersCache.set(uuid, Array.isArray(data) ? data : []);
+      }catch(e){}
+      done++;
+      if(done % 5 === 0) renderParticipants();
+    }
+  }
+  if(statusEl) statusEl.textContent = 'All team details loaded!';
+  if(btn) btn.disabled = false;
+  renderParticipants();
+}
+
+function exportParticipantsCSV(){
+  const headers = [
+    "Team Name", "city", "All Girls", "Team Strength", "domain",
+    "College Name", "College State", "Phone number - Leader",
+    "Email - Leader", "Email - M1", "Email - M2", "Email - M3", "Email - M4", "ppt"
+  ];
+  const lines = [headers.map(h => `"${h}"`).join(',')];
+  allParticipants.forEach(p => {
+    const d = getParticipantFullRowData(p);
+    const row = [
+      d.teamName, d.city, d.allGirls, d.teamStrength, d.domain,
+      d.collegeName, d.collegeState, d.phoneLeader,
+      d.emailLeader, d.emailM1, d.emailM2, d.emailM3, d.emailM4, d.ppt
+    ].map(v => {
+      const str = (v === undefined || v === null || v === '—') ? '' : String(v);
+      return `"${str.replace(/"/g, '""')}"`;
+    });
+    lines.push(row.join(','));
+  });
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'pec-hacks-participants.csv';
+  link.click();
+}
+
+let cachedColleges = [];
+let cachedCities = [];
+let cachedCountries = [];
+
+function exportSimpleListCSV(items, label, filename){
+  const lines = [`"${label}","Count"`];
+  items.forEach(i => {
+    lines.push(`"${String(i.name || '').replace(/"/g, '""')}","${i.count}"`);
+  });
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+function exportCollegesCSV(){ exportSimpleListCSV(cachedColleges, 'College', 'pec-hacks-top-colleges.csv'); }
+function exportCitiesCSV(){ exportSimpleListCSV(cachedCities, 'City', 'pec-hacks-top-cities.csv'); }
+function exportCountriesCSV(){ exportSimpleListCSV(cachedCountries, 'Country', 'pec-hacks-countries.csv'); }
+
+
+// ---------- Team members modal ----------
+
+function teamMembersUrl(teamUuid){
+  return `${BASE}/teams/${teamUuid}/members`
+    + `?hackathon_scope_extra_attributes=uuid%252Cname%252Crequired%252Cdesc%252Ctype`
+    + `&profile_attributes=name`
+    + `&user_attributes=first_name%252Clast_name%252Cusername%252Cdob%252Cemail%252Cuuid%252Cbio%252Cshort_bio%252Cstatus`
+    + `&user_extra_attributes=resume`
+    + `&user_hackathon_attributes=uuid%252Cstatus%252Cticket%252Cnote%252Cai_assisted_score%252Cai_assisted_status%252Cai_assisted_reason%252Cunicorn_wallet_ens%252Cunicorn_wallet_address`
+    + `&user_hackathon_extra_attributes=uuid%252Cvalue`;
+}
+
+async function openTeamModal(teamUuid, teamName){
+  const backdrop = document.getElementById('teamModalBackdrop');
+  const body = document.getElementById('modalTeamBody');
+  document.getElementById('modalTeamName').textContent = teamName || 'Team';
+  document.getElementById('modalTeamUuid').textContent = teamUuid;
+  body.innerHTML = '<div class="loading">fetching<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>';
+  backdrop.classList.add('open');
+
+  try{
+    let members;
+    if(teamMembersCache.has(teamUuid)){
+      members = teamMembersCache.get(teamUuid);
+    } else {
+      const data = await fetchJSON(teamMembersUrl(teamUuid));
+      members = data.members || data.data || data.result || (Array.isArray(data) ? data : []);
+      teamMembersCache.set(teamUuid, members);
+    }
+    renderTeamMembers(body, members);
+  }catch(e){
+    body.innerHTML = `<div class="err">team members fetch failed — ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function closeTeamModal(){
+  document.getElementById('teamModalBackdrop').classList.remove('open');
+}
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeTeamModal(); });
+
+function renderTeamMembers(container, members){
+  if(!members || !members.length){
+    container.innerHTML = '<div class="empty">no members found for this team</div>';
+    return;
+  }
+  container.innerHTML = '';
+  members.forEach(m => {
+    const user = m.user || m;
+    const name = [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(' ') || user.username || user.name || 'Unnamed';
+    const email = user.email || '—';
+    const status = (m.user_hackathon && m.user_hackathon.status) || m.status || user.status || 'unknown';
+    const bio = user.short_bio || user.bio || '';
+    const resume = resumeUrl({ user });
+
+    const card = document.createElement('div');
+    card.className = 'member-card';
+    card.innerHTML = `
+      <div class="member-row">
+        <div class="member-name">${escapeHtml(name)}</div>
+        <span class="badge ${['accept_sent','accept','check_in','reject_sent','reject','rsvp','submit','waitlist_sent','waitlist','withdraw'].includes(status) ? status : 'other'}">${escapeHtml(status)}</span>
+      </div>
+      <div class="member-meta">${escapeHtml(email)}${resume ? ` · <a class="resume-link" href="${escapeHtml(resume)}" target="_blank" rel="noopener">View resume PDF</a>` : ''}</div>
+      ${bio ? `<div class="member-bio">${escapeHtml(bio)}</div>` : ''}
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ---------- Colleges ----------
+async function loadColleges(){
+  const el = document.getElementById('collegeList');
+  try{
+    let page = 1;
+    let totalPages = 1;
+    let all = [];
+    while(page <= totalPages && page <= 100){
+      const data = await fetchJSON(`${BASE}/participantsCollege?page=${page}&limit=500`);
+      const list = data.colleges || data.data || data.result || (Array.isArray(data) ? data : []);
+      totalPages = data.pages || 1;
+      if(!list.length) break;
+      all = all.concat(list);
+      page++;
+    }
+    const counts = {};
+    all.forEach(item => {
+      const name = item.college || item.name || item.college_name || 'Unknown';
+      const c = item.count ?? item.total ?? item.value ?? 1;
+      counts[name] = (counts[name] || 0) + c;
+    });
+    const arr = Object.entries(counts).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+    cachedColleges = arr;
+    renderBarList(el, arr, i=>i.name, i=>i.count);
+    document.getElementById('collegeCount').textContent = arr.length + ' colleges';
+  }catch(e){
+    el.innerHTML = `<div class="err">colleges fetch failed — ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ---------- Address (city/country) ----------
+async function loadAddress(){
+  const cityEl = document.getElementById('cityList');
+  const countryEl = document.getElementById('countryList');
+  try{
+    let page = 1;
+    let totalPages = 1;
+    let all = [];
+    while(page <= totalPages && page <= 100){
+      const data = await fetchJSON(`${BASE}/participantsAddress?page=${page}&attributes=city,country&limit=500`);
+      const list = data.addresses || data.data || data.result || (Array.isArray(data) ? data : []);
+      totalPages = data.pages || 1;
+      if(!list.length) break;
+      all = all.concat(list);
+      page++;
+    }
+
+    const cityCounts = {};
+    const countryCounts = {};
+    all.forEach(item => {
+      const city = item.city || (item.address && item.address.city);
+      const country = item.country || (item.address && item.address.country);
+      const cCount = item.count ?? item.total ?? 1;
+      if(city) cityCounts[city] = (cityCounts[city] || 0) + cCount;
+      if(country) countryCounts[country] = (countryCounts[country] || 0) + cCount;
+    });
+
+    const cityArr = Object.entries(cityCounts).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+    const countryArr = Object.entries(countryCounts).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+    cachedCities = cityArr;
+    cachedCountries = countryArr;
+
+    renderBarList(cityEl, cityArr, i=>i.name, i=>i.count);
+    renderBarList(countryEl, countryArr, i=>i.name, i=>i.count);
+    document.getElementById('cityCount').textContent = cityArr.length + ' cities';
+    document.getElementById('countryCount').textContent = countryArr.length + ' countries';
+  }catch(e){
+    cityEl.innerHTML = `<div class="err">address fetch failed — ${escapeHtml(e.message)}</div>`;
+    countryEl.innerHTML = `<div class="err">—</div>`;
+  }
+}
+
+function renderBarList(container, items, getName, getCount){
+  if(!items.length){
+    container.innerHTML = '<div class="empty">no data</div>';
+    return;
+  }
+  const sorted = [...items].sort((a,b)=>getCount(b)-getCount(a));
+  const max = getCount(sorted[0]) || 1;
+  container.innerHTML = '';
+  sorted.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    const count = getCount(item);
+    const pct = Math.max(4, Math.round((count/max)*100));
+    row.innerHTML = `<div class="name" title="${escapeHtml(getName(item))}">${escapeHtml(getName(item))}</div>
+                      <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+                      <div class="num">${escapeHtml(count)}</div>`;
+    container.appendChild(row);
+  });
+}
+
+async function loadAll(){
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true; btn.textContent = 'syncing…';
+  await Promise.allSettled([
+    loadHackathonInfo(),
+    loadAnalytics(),
+    loadParticipants(),
+    loadColleges(),
+    loadAddress()
+  ]);
+  setLastFetched();
+  btn.disabled = false; btn.textContent = '↻ Refresh all';
+}
+
+setAuthUI();
+loadAll();
+</script>
+
+</body>
+</html>
