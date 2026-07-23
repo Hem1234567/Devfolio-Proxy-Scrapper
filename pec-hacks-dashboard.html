@@ -96,6 +96,19 @@
   .grid-2col{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
   @media (max-width:900px){ .grid-2col{ grid-template-columns:1fr; } }
 
+  /* ---------- domain panels ---------- */
+  .domain-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(480px, 1fr)); gap:18px; }
+  @media (max-width:600px){ .domain-grid{ grid-template-columns:1fr; } }
+  .domain-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:var(--mono); font-size:10px; padding:2px 8px; border-radius:100px;
+    background:rgba(157,140,255,0.12); border:1px solid rgba(157,140,255,0.3); color:var(--violet);
+  }
+  .domain-panel-table{ max-height:320px; overflow:auto; }
+  .domain-panel-table table{ font-size:11.5px; }
+  .domain-panel-table thead th{ font-size:10px; padding:8px 12px; }
+  .domain-panel-table tbody td{ padding:7px 12px; }
+
   .panel{
     background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden;
   }
@@ -382,6 +395,15 @@
         </div>
       </div>
       <div class="panel-body" id="countryList"><div class="loading">fetching<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div></div>
+    </div>
+
+    <!-- Domain-wise panels rendered by JS -->
+    <div id="domainPanelsSection" style="display:none; flex-direction:column; gap:12px;">
+      <div style="display:flex; align-items:center; gap:12px; padding:4px 0;">
+        <div class="eyebrow" style="margin:0;">Domain Breakdown</div>
+        <span id="domainPanelsMeta" style="font-family:var(--mono); font-size:11px; color:var(--muted);"></span>
+      </div>
+      <div class="domain-grid" id="domainPanelsGrid"></div>
     </div>
   </div>
 
@@ -835,41 +857,65 @@ function renderParticipants(){
   tbody.querySelectorAll('.team-link[data-uuid]').forEach(el => {
     el.addEventListener('click', () => openTeamModal(el.dataset.uuid, el.dataset.name));
   });
+
+  renderDomainPanels(); // keep domain boxes in sync with current participant data
+}
+
+async function fetchWithRetry(url, retries = 3, delayMs = 500){
+  for(let attempt = 1; attempt <= retries; attempt++){
+    try{
+      return await fetchJSON(url);
+    }catch(e){
+      if(attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, delayMs * attempt)); // backoff: 500ms, 1000ms, 1500ms
+    }
+  }
 }
 
 async function fetchAllTeamDetails(){
   const btn = document.getElementById('fetchTeamsBtn');
   const statusEl = document.getElementById('fetchTeamsStatus');
+
+  // Only fetch teams not yet in cache (so retrying the button retries failed ones)
   const uuids = [...new Set(allParticipants.map(p => participantTeamUuid(p)).filter(Boolean))]
                   .filter(uuid => !teamMembersCache.has(uuid));
 
   if(!uuids.length){
-    if(statusEl) statusEl.textContent = 'All team details already loaded!';
+    if(statusEl) statusEl.textContent = '✓ All team details already loaded!';
     renderParticipants();
     return;
   }
 
   if(btn) btn.disabled = true;
-  let done = 0;
+  let done = 0, failed = 0;
   const total = uuids.length;
-  const BATCH = 10; // concurrent requests per batch
+  const BATCH = 5; // keep proxy comfortable — increase if your proxy handles more
 
   for(let i = 0; i < total; i += BATCH){
     const batch = uuids.slice(i, i + BATCH);
     await Promise.all(batch.map(async uuid => {
       try{
-        const data = await fetchJSON(teamMembersUrl(uuid));
-        teamMembersCache.set(uuid, Array.isArray(data) ? data : (data.members || data.result || []));
+        const data = await fetchWithRetry(teamMembersUrl(uuid));
+        // Normalize all known response shapes from the API
+        const members = Array.isArray(data)
+          ? data
+          : (data.members || data.data || data.result || []);
+        teamMembersCache.set(uuid, members);
       }catch(e){
-        teamMembersCache.set(uuid, []); // mark as attempted so we don't retry
+        // Do NOT cache failures — button retry will attempt these again
+        failed++;
       }
       done++;
-      if(statusEl) statusEl.textContent = `Fetching team details… ${done}/${total}`;
+      if(statusEl) statusEl.textContent = `Fetching… ${done}/${total}${failed ? ` (${failed} failed, will retry on next click)` : ''}`;
     }));
-    renderParticipants(); // re-render after each batch so results appear progressively
+    renderParticipants(); // progressive render after each batch
+    if(i + BATCH < total) await new Promise(r => setTimeout(r, 100)); // small gap between batches
   }
 
-  if(statusEl) statusEl.textContent = `✓ All ${total} team details loaded!`;
+  const loaded = total - failed;
+  if(statusEl) statusEl.textContent = failed
+    ? `⚠ ${loaded}/${total} loaded — ${failed} failed. Click button again to retry.`
+    : `✓ All ${total} team details loaded!`;
   if(btn) btn.disabled = false;
   renderParticipants();
 }
@@ -1078,6 +1124,107 @@ function renderBarList(container, items, getName, getCount){
                       <div class="num">${escapeHtml(count)}</div>`;
     container.appendChild(row);
   });
+}
+
+// ---------- Domain panels ----------
+function renderDomainPanels(){
+  const grid = document.getElementById('domainPanelsGrid');
+  const section = document.getElementById('domainPanelsSection');
+  const metaEl = document.getElementById('domainPanelsMeta');
+  if(!allParticipants.length){ section.style.display = 'none'; return; }
+
+  // Group participants by domain
+  const domainMap = new Map();
+  allParticipants.forEach(p => {
+    const d = getParticipantFullRowData(p);
+    const domain = (d.domain && d.domain !== '—') ? d.domain.trim() : 'Unknown / Not Set';
+    if(!domainMap.has(domain)) domainMap.set(domain, []);
+    domainMap.get(domain).push({ p, d });
+  });
+
+  // Sort domains by count descending
+  const sorted = [...domainMap.entries()].sort((a,b) => b[1].length - a[1].length);
+
+  metaEl.textContent = sorted.length + ' domains found';
+  section.style.display = 'flex';
+  grid.innerHTML = '';
+
+  sorted.forEach(([domain, entries]) => {
+    const safeId = 'domain_' + domain.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+
+    // Build panel
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.innerHTML = `
+      <div class="panel-head">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:0;">
+          <h3 style="margin:0;">${escapeHtml(domain)}</h3>
+          <span class="domain-badge">${entries.length} team${entries.length !== 1 ? 's' : ''}</span>
+        </div>
+        <button class="btn-action" onclick="exportDomainCSV('${safeId}')" style="padding:4px 8px; font-size:10px; background:var(--violet); color:#fff; white-space:nowrap;">⬇ CSV</button>
+      </div>
+      <div class="domain-panel-table">
+        <table id="tbl_${safeId}">
+          <thead><tr>
+            <th>Team</th><th>City</th><th>College</th><th>Leader Email</th><th>Phone</th><th>All Girls</th><th>Strength</th><th>Status</th>
+          </tr></thead>
+          <tbody>${entries.map(({p, d}) => {
+            const status = participantStatus(p);
+            const cls = ['accept_sent','accept','check_in','reject_sent','reject','rsvp','submit','waitlist_sent','waitlist','withdraw'].includes(status) ? status : 'other';
+            return `<tr>
+              <td>${d.teamUuid
+                ? `<span class="team-link" data-uuid="${escapeHtml(d.teamUuid)}" data-name="${escapeHtml(d.teamName)}">${escapeHtml(d.teamName)}</span>`
+                : escapeHtml(d.teamName)}</td>
+              <td>${escapeHtml(d.city)}</td>
+              <td style="max-width:160px; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(d.collegeName)}">${escapeHtml(d.collegeName)}</td>
+              <td>${escapeHtml(d.emailLeader)}</td>
+              <td>${escapeHtml(d.phoneLeader)}</td>
+              <td>${escapeHtml(d.allGirls)}</td>
+              <td style="text-align:center;">${escapeHtml(String(d.teamStrength))}</td>
+              <td><span class="badge ${cls}">${escapeHtml(status)}</span></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`;
+
+    // Store data on panel for CSV export
+    panel.dataset.domainId = safeId;
+    panel.dataset.domainName = domain;
+    panel.dataset.domainEntries = JSON.stringify(entries.map(({d, p}) => ({
+      teamName: d.teamName, city: d.city, collegeName: d.collegeName, collegeState: d.collegeState,
+      emailLeader: d.emailLeader, emailM1: d.emailM1, emailM2: d.emailM2, emailM3: d.emailM3, emailM4: d.emailM4,
+      phoneLeader: d.phoneLeader, allGirls: d.allGirls, teamStrength: d.teamStrength, domain: d.domain,
+      ppt: d.ppt, status: participantStatus(p)
+    })));
+
+    // Attach team-link click handlers
+    grid.appendChild(panel);
+    panel.querySelectorAll('.team-link[data-uuid]').forEach(el => {
+      el.addEventListener('click', () => openTeamModal(el.dataset.uuid, el.dataset.name));
+    });
+  });
+}
+
+function exportDomainCSV(safeId){
+  const panel = document.querySelector(`[data-domain-id="${safeId}"]`);
+  if(!panel) return;
+  const domainName = panel.dataset.domainName || 'domain';
+  const entries = JSON.parse(panel.dataset.domainEntries || '[]');
+  const headers = ['Team Name','City','College Name','College State','Email Leader','Email M1','Email M2','Email M3','Email M4','Phone Leader','All Girls','Team Strength','Domain','PPT','Status'];
+  const lines = [headers.map(h => `"${h}"`).join(',')];
+  entries.forEach(d => {
+    const row = [
+      d.teamName, d.city, d.collegeName, d.collegeState,
+      d.emailLeader, d.emailM1, d.emailM2, d.emailM3, d.emailM4,
+      d.phoneLeader, d.allGirls, d.teamStrength, d.domain, d.ppt, d.status
+    ].map(v => `"${String(v === undefined || v === null || v === '—' ? '' : v).replace(/"/g,'""')}"`);
+    lines.push(row.join(','));
+  });
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `pec-hacks-domain-${domainName.replace(/[^a-z0-9]/gi,'-').toLowerCase()}.csv`;
+  link.click();
 }
 
 async function loadAll(){
