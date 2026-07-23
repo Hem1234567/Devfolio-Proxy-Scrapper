@@ -840,21 +840,36 @@ function renderParticipants(){
 async function fetchAllTeamDetails(){
   const btn = document.getElementById('fetchTeamsBtn');
   const statusEl = document.getElementById('fetchTeamsStatus');
-  const uuids = [...new Set(allParticipants.map(p => participantTeamUuid(p)).filter(Boolean))];
+  const uuids = [...new Set(allParticipants.map(p => participantTeamUuid(p)).filter(Boolean))]
+                  .filter(uuid => !teamMembersCache.has(uuid));
+
+  if(!uuids.length){
+    if(statusEl) statusEl.textContent = 'All team details already loaded!';
+    renderParticipants();
+    return;
+  }
+
   if(btn) btn.disabled = true;
   let done = 0;
-  for(const uuid of uuids){
-    if(!teamMembersCache.has(uuid)){
-      if(statusEl) statusEl.textContent = `Fetching team details (${done}/${uuids.length})…`;
+  const total = uuids.length;
+  const BATCH = 10; // concurrent requests per batch
+
+  for(let i = 0; i < total; i += BATCH){
+    const batch = uuids.slice(i, i + BATCH);
+    await Promise.all(batch.map(async uuid => {
       try{
         const data = await fetchJSON(teamMembersUrl(uuid));
-        teamMembersCache.set(uuid, Array.isArray(data) ? data : []);
-      }catch(e){}
+        teamMembersCache.set(uuid, Array.isArray(data) ? data : (data.members || data.result || []));
+      }catch(e){
+        teamMembersCache.set(uuid, []); // mark as attempted so we don't retry
+      }
       done++;
-      if(done % 5 === 0) renderParticipants();
-    }
+      if(statusEl) statusEl.textContent = `Fetching team details… ${done}/${total}`;
+    }));
+    renderParticipants(); // re-render after each batch so results appear progressively
   }
-  if(statusEl) statusEl.textContent = 'All team details loaded!';
+
+  if(statusEl) statusEl.textContent = `✓ All ${total} team details loaded!`;
   if(btn) btn.disabled = false;
   renderParticipants();
 }
